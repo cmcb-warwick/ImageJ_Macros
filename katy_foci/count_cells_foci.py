@@ -39,6 +39,7 @@ from ij.process import ImageStatistics as IS
 
 countcells = 0
 count_range = 0
+cellsperfoci = {0:0, 1:0, 2:0, 3:0, "more":0}
 
 # calculate total number of channels based on 
 # parameter inputs
@@ -202,13 +203,13 @@ for filename in filenames:
 
 		# find maxima corresponding to foci - noise=50 has worked well
 		# empirically
-		IJ.run("Find Maxima...", "noise=1000 output=List");
+		IJ.run("Find Maxima...", "noise=750 output=List");
 		image.close()
 		
 		# get the results table with maxima and add a "cell" column to it
 		rt = ResultsTable.getResultsTable()
 		rt.addValue("cell", 0)
-		countcells = countcells + len(rois) - 1
+		countcells = countcells + len(rois)
 		print("countcells: "+str(countcells))
 		cell = 1
 		for roi in rois:
@@ -223,6 +224,7 @@ for filename in filenames:
 				if roi.contains(x,y):
 					rt.setValue("cell", count, cell)
 			cell = cell + 1
+			
 		# save this results table
 		rt.save(directory+"/"+filename+"_GFP.csv" )
 		print("saving at ",directory+"/"+filename+"_GFP.csv")
@@ -247,8 +249,13 @@ for filename in filenames:
 			currcell = int(rt.getValue("cell",count))
 			
 			consol.setValue("foci_count", currcell, int(consol.getValue("foci_count", currcell))+1)
-			
-
+		for count in range(1,cell):
+			foci = consol.getValue("foci_count",count)	
+			if foci<=3:
+				cellsperfoci[foci] = cellsperfoci[foci] + 1
+			else:
+				cellsperfoci["more"] = cellsperfoci["more"] +1
+		print(cellsperfoci)
 		# close the results window
 		IJ.selectWindow("Results"); 
 		IJ.run("Close");
@@ -354,4 +361,7 @@ fp = open(srcDir + "/total_summary.csv", "w")
 fp.write("total cells, "+str(countcells)+"\n")
 if (linechannel > 0):
 	fp.write("cells in range, "+str(count_range)+"\n")
+for i in range(4):
+	fp.write("cells with "+str(i)+" foci, "+str(cellsperfoci[i])+"\n")
+fp.write("cells with more than 3 foci, "+ str(cellsperfoci["more"])+"\n")
 fp.close()
