@@ -75,28 +75,32 @@ def run_comdet(image):
 	return rt
 
 
-def get_red_spots(rt):
-	spots = 0
+def get_red_spots(rt, slices):
+	
+	spots = [0]*slices
 	for count in range(rt.size()):
 		channel = int(rt.getValue("Channel",count))
+		thisslice = int(rt.getValue("Slice",count))
 		if (channel == 1):
-			spots += 1
+			spots[thisslice-1] += 1
 	return spots
 
-def get_green_spots(rt):
-	spots = 0
+def get_green_spots(rt, slices):
+	spots = [0]*slices
 	for count in range(rt.size()):
 		channel = int(rt.getValue("Channel",count))
+		thisslice = int(rt.getValue("Slice",count))
 		if (channel == 2):
-			spots += 1
+			spots[thisslice-1] += 1
 	return spots
 
-def get_colocalised(rt):
-	spots = 0
+def get_colocalised(rt, slices):
+	spots = [0]*slices
 	for count in range(rt.size()):
 		coloc = int(rt.getValue("Colocalized",count))
+		thisslice = int(rt.getValue("Slice",count))
 		if (coloc == 1):
-			spots += 1
+			spots[thisslice-1] += 1
 	return spots
 
 
@@ -138,18 +142,35 @@ for filename in filenames:
 	image.close()
 	image = IJ.getImage()
 	image.close()
-
-	red_spots = get_red_spots(rt)
-	green_spots = get_green_spots(rt)
-	colocalised = float(get_colocalised(rt) / 2)
-
+	
+	red_spots = get_red_spots(rt, z_slices)
+	green_spots = get_green_spots(rt, z_slices)
+	
+	colocalised = get_colocalised(rt, z_slices)
+	for i in range(z_slices):
+		colocalised[i] = float(colocalised[i] /2)
 	print("red: ",red_spots,"green: ", green_spots, "coloc: ", colocalised)
+
+	
 	fp = open(directory+"/"+filename+"_summary.csv", "w")
-	fp.write("red spots, "+str(red_spots)+"\n")
-	fp.write("green spots, "+str(green_spots)+"\n")
-	fp.write("colocalised, "+str(colocalised)+"\n")
-	fp.write("percentage of red spots colocalising, "+str(colocalised/red_spots)+"\n")
-	fp.write("percentage of green spots colocalising, "+str(colocalised/green_spots)+"\n")
+	fp.write("\z-slice,red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising\n")
+	for i in range(z_slices):
+		if red_spots[i] == 0:
+			if green_spots[i] == 0:
+				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(0)+","+str(0)+"\n")
+			else:
+				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(0)+","+str(colocalised[i]/green_spots[i])+"\n")
+		else:
+			if green_spots[i] == 0:
+				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(colocalised[i]/red_spots[i])+","+str(0)+"\n")
+			else:
+				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(colocalised[i]/red_spots[i])+","+str(colocalised[i]/green_spots[i])+"\n")
+	fp.write("\n\n\n")
+	fp.write("total red spots, "+str(sum(red_spots))+"\n")
+	fp.write("total green spots, "+str(sum(green_spots))+"\n")
+	fp.write("total colocalised, "+str(sum(colocalised))+"\n")
+	fp.write("percentage of red spots colocalising, "+str(sum(colocalised)/sum(red_spots))+"\n")
+	fp.write("percentage of green spots colocalising, "+str(sum(colocalised)/sum(green_spots))+"\n")
 	fp.close()
 	
 	rt.reset()
