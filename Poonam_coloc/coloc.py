@@ -52,6 +52,23 @@ def retrieve_channels(image, channels):
 			final_stack.addSlice(str(i), myslice)
 	return final_stack
 
+def retrieve_dapi(image, channel):
+	# get stack from current image
+	stack = image.getStack()
+	#print(image.getStackSize(), stack.getSize())
+	final_stack = ImageStack(image.width, image.height)
+
+	for i in range(1, image.getStackSize()+1):
+		
+		countchannel = i % totchannels
+		#print(i, countchannel, countchannel in channels)
+		if (countchannel == channel):
+			
+			myslice = stack.getProcessor(i)
+		
+			final_stack.addSlice(str(i), myslice)
+	return final_stack
+
 def run_comdet(image):
 	IJ.run("Detect Particles", "include two=[Detect in both channels independently] ch1a="+str(ch1size) + " ch1s=" + str(ch1thresh) + " ch2a="+str(ch2size) + " ch2s=" + str(ch2thresh) + " calculate max=" + str(coloc) + " add=Nothing")
 	rt = ResultsTable.getResultsTable()
@@ -100,9 +117,10 @@ for filename in filenames:
 	image = IJ.getImage()
 	directory = srcDir
 	channels = [1, 2]
-	
+	channel = 3
+	channel = channel % totchannels
 	twochannel_stack = retrieve_channels(image, channels)
-
+	dapi_stack = retrieve_dapi(image, channel)
 	image.close()
 	#image = ImagePlus("test", twochannel_stack)
 	#fs = FileSaver(image)
