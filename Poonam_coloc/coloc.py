@@ -1,9 +1,9 @@
 #@ File    (label = "Input directory", style = "directory") srcFile
 #@ String  (label = "File extension", value=".tif") ext
 #@ Float (label = "Channel 1 approx size", value = 4.0) ch1size
-#@ Float (label = "Channel 1 relative threshold", value = 3.0) ch1thresh
+#@ Float (label = "Channel 1 threshold", value = 3.0) ch1thresh
 #@ Float (label = "Channel 2 approx size", value = 4.0) ch2size
-#@ Float (label = "Channel 2 relative threshold", value = 3.0) ch2thresh
+#@ Float (label = "Channel 2 threshold", value = 3.0) ch2thresh
 #@ Float (label = "Maximum colocalisation distance", value = 4.0) coloc
 
 """
@@ -11,7 +11,7 @@
 coloc.py 
 created by: Erick Martins Ratamero
 date: 01/08/18
-last updated: 01/08/18
+last updated: 02/08/18
 
 Opens a directory of images and calculates green on red and 
 red on green colocalisation. Separates bottom of nucleus calculations
@@ -29,11 +29,17 @@ from ij.measure import ResultsTable
 from loci.plugins import BF
 from ij.io import FileSaver 
 from ij.process import ImageStatistics as IS  
+import time
 
 srcDir = srcFile.getAbsolutePath()
 
 totchannels = 3
 
+
+def safe_div(x,y):
+    if y == 0:
+        return 0
+    return x / y
 
 def retrieve_channels(image, channels):
 	# get stack from current image
@@ -75,33 +81,50 @@ def run_comdet(image):
 	return rt
 
 
-def get_red_spots(rt, slices):
+def get_red_spots(rt, slices, image):
 	
 	spots = [0]*slices
+	dapi_spots = [0]*slices
 	for count in range(rt.size()):
 		channel = int(rt.getValue("Channel",count))
 		thisslice = int(rt.getValue("Slice",count))
+		X = int(rt.getValue("X_(px)", count))
+		Y = int(rt.getValue("Y_(px)", count))
 		if (channel == 1):
 			spots[thisslice-1] += 1
-	return spots
+			if(image.getPixel(X, Y)[0] == 255):
+				dapi_spots[thisslice-1] += 1
+	return [spots, dapi_spots]
 
 def get_green_spots(rt, slices):
 	spots = [0]*slices
+	dapi_spots = [0]*slices
 	for count in range(rt.size()):
 		channel = int(rt.getValue("Channel",count))
 		thisslice = int(rt.getValue("Slice",count))
+		X = int(rt.getValue("X_(px)", count))
+		Y = int(rt.getValue("Y_(px)", count))
 		if (channel == 2):
 			spots[thisslice-1] += 1
-	return spots
+			if(image.getPixel(X, Y)[0] == 255):
+				dapi_spots[thisslice-1] += 1
+	return [spots, dapi_spots]
 
 def get_colocalised(rt, slices):
 	spots = [0]*slices
+	dapi_spots = [0]*slices
 	for count in range(rt.size()):
+		
 		coloc = int(rt.getValue("Colocalized",count))
 		thisslice = int(rt.getValue("Slice",count))
+		X = int(rt.getValue("X_(px)", count))
+		Y = int(rt.getValue("Y_(px)", count))
+		#print(count, X, Y, coloc, thisslice, spots, dapi_spots)
 		if (coloc == 1):
 			spots[thisslice-1] += 1
-	return spots
+			if(image.getPixel(X, Y)[0] == 255):
+				dapi_spots[thisslice-1] += 1
+	return [spots, dapi_spots]
 
 
 # the the list of file names in the input directory
@@ -130,7 +153,8 @@ for filename in filenames:
 	#fs = FileSaver(image)
 	#filepath = directory + "/" + filename + "_twochannel.tif" 
 	#fs.saveAsTiff(filepath) 
-	image = ImagePlus("test", twochannel_stack).show()
+	image = ImagePlus("dapi stack", dapi_stack).show()
+	image = ImagePlus("two channel stack", twochannel_stack).show()
 	
 	image = IJ.getImage()
 	z_slices = twochannel_stack.getSize() / 2
@@ -138,41 +162,66 @@ for filename in filenames:
 	IJ.run("Stack to Hyperstack...", "order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
 	
 	rt = run_comdet(image)
-	rt.save(directory+"/"+filename+"_results.csv" )
-	image.close()
 	image = IJ.getImage()
+	
+	rt.save(directory+"/"+filename+"_results.csv" )
+	
+	image.setDimensions(2, z_slices, 1)
+	image.setOpenAsHyperStack(True)
+	print(image.isHyperStack(), image.getNChannels(), image.getOverlay())
+	#image.flattenStack()
+	image.show()
+	fs = FileSaver(image)
+	filepath = directory + "/" + filename + "_coloc.tiff" 
+	
+	fs.saveAsTiff(filepath) 
 	image.close()
-	
-	red_spots = get_red_spots(rt, z_slices)
-	green_spots = get_green_spots(rt, z_slices)
-	
-	colocalised = get_colocalised(rt, z_slices)
-	for i in range(z_slices):
-		colocalised[i] = float(colocalised[i] /2)
-	print("red: ",red_spots,"green: ", green_spots, "coloc: ", colocalised)
+
+	image = IJ.getImage()
+	IJ.run("Convert to Mask", "method=Default background=Default calculate")
 
 	
-	fp = open(directory+"/"+filename+"_summary.csv", "w")
-	fp.write("\z-slice,red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising\n")
+	
+	#image = IJ.getImage()
+	#image.close()
+	
+	[red_spots, red_spots_dapi] = get_red_spots(rt, z_slices, image)
+	
+	[green_spots, green_spots_dapi] = get_green_spots(rt, z_slices)
+	
+	[colocalised, colocalised_dapi] = get_colocalised(rt, z_slices)
 	for i in range(z_slices):
-		if red_spots[i] == 0:
-			if green_spots[i] == 0:
-				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(0)+","+str(0)+"\n")
-			else:
-				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(0)+","+str(colocalised[i]/green_spots[i])+"\n")
-		else:
-			if green_spots[i] == 0:
-				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(colocalised[i]/red_spots[i])+","+str(0)+"\n")
-			else:
-				fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(colocalised[i]/red_spots[i])+","+str(colocalised[i]/green_spots[i])+"\n")
+		colocalised[i] = float(colocalised[i] /2)
+	for i in range(z_slices):
+		colocalised_dapi[i] = float(colocalised_dapi[i] /2)
+	print("dapi red: ",red_spots_dapi,"dapi green: ", green_spots_dapi, "dapi coloc: ", colocalised_dapi)
+	image.close()
+	
+	fp = open(directory+"/"+filename+"_summary.csv", "w")
+	fp.write("red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising, red spots on DAPI, green spots on DAPI, colocalised on DAPI, percentage of red spots colocalising on DAPI, percentage of green spots colocalising on DAPI\n")
+	for i in range(z_slices):
+		fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(safe_div(colocalised[i],red_spots[i]))+","+str(safe_div(colocalised[i],green_spots[i])))
+		fp.write(","+str(red_spots_dapi[i])+","+str(green_spots_dapi[i])+","+str(colocalised_dapi[i])+","+str(safe_div(colocalised_dapi[i],red_spots_dapi[i]))+","+str(safe_div(colocalised_dapi[i],green_spots_dapi[i]))+"\n")
 	fp.write("\n\n\n")
 	fp.write("total red spots, "+str(sum(red_spots))+"\n")
 	fp.write("total green spots, "+str(sum(green_spots))+"\n")
 	fp.write("total colocalised, "+str(sum(colocalised))+"\n")
 	fp.write("percentage of red spots colocalising, "+str(sum(colocalised)/sum(red_spots))+"\n")
-	fp.write("percentage of green spots colocalising, "+str(sum(colocalised)/sum(green_spots))+"\n")
+	fp.write("percentage of green spots colocalising, "+str(sum(colocalised)/sum(green_spots))+"\n\n\n")
+
+	fp.write("total red spots on DAPI, "+str(sum(red_spots_dapi))+"\n")
+	fp.write("total green spots on DAPI, "+str(sum(green_spots_dapi))+"\n")
+	fp.write("total colocalised on DAPI, "+str(sum(colocalised_dapi))+"\n")
+	fp.write("percentage of red spots colocalising on DAPI, "+str(safe_div(sum(colocalised_dapi),sum(red_spots_dapi)))+"\n")
+	fp.write("percentage of green spots colocalising on DAPI, "+str(safe_div(sum(colocalised_dapi),sum(green_spots_dapi)))+"\n")
 	fp.close()
+
 	
+	fp = open(directory+"/"+filename+"_bottom.csv", "w")
+	fp.write("red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising, red spots on DAPI, green spots on DAPI, colocalised on DAPI, percentage of red spots colocalising on DAPI, percentage of green spots colocalising on DAPI\n")
+	fp.write(str(red_spots[-1])+","+str(green_spots[-1])+","+str(colocalised[-1])+","+str(safe_div(colocalised[-1],red_spots[-1]))+","+str(safe_div(colocalised[-1],green_spots[-1])))
+	fp.write(","+str(red_spots_dapi[-1])+","+str(green_spots_dapi[-1])+","+str(colocalised_dapi[-1])+","+str(safe_div(colocalised_dapi[-1],red_spots_dapi[-1]))+","+str(safe_div(colocalised_dapi[-1],green_spots_dapi[-1]))+"\n")
+	fp.close()
 	rt.reset()
 	w = WindowManager 
 
