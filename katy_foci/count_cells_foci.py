@@ -12,7 +12,7 @@
 count_cells_foci.py 
 created by: Erick Martins Ratamero
 date: 03/07/18
-last updated: 04/07/18
+last updated: 19/07/18
 
 From an open image in Fiji, generate cells ROIs from
 thresholding a channel, then count the foci inside each
@@ -35,8 +35,11 @@ from ij import WindowManager
 from ij.measure import ResultsTable
 from loci.plugins import BF
 from ij.io import FileSaver 
+from ij.process import ImageStatistics as IS  
 
-
+countcells = 0
+count_range = 0
+cellsperfoci = {0:0, 1:0, 2:0, 3:0, "more":0}
 
 # calculate total number of channels based on 
 # parameter inputs
@@ -119,19 +122,20 @@ for filename in filenames:
 	for i in range(1, image.getNSlices()+1):
 
 		if (countchannel > 0):
-			slice = stack.getProcessor(i*totchannels -(totchannels-countchannel))
-		
-			countfoci_stack.addSlice(str(i), slice)
+			myslice = stack.getProcessor(i*totchannels -(totchannels-countchannel))
+			
+			countfoci_stack.addSlice(str(i), myslice)
 
 		if (linechannel > 0):
-			slice = stack.getProcessor(i*totchannels -(totchannels-linechannel))
+			myslice = stack.getProcessor(i*totchannels -(totchannels-linechannel))
 		
-			linefoci_stack.addSlice(str(i), slice)
+			linefoci_stack.addSlice(str(i), myslice)
 		# we also calculate the standard deviation on each cell channel slice
 		# and update the maximum value of that
 		
-		slice = stack.getProcessor(i*totchannels -(totchannels-1 - cellchannel))
-		stats = slice.getStats()
+		myslice = stack.getProcessor(i*totchannels -(totchannels-1 - cellchannel))
+		
+		stats = IS.getStatistics(myslice)
 		if stats.stdDev > maxstddev:
 		
 			maxstddev = stats.stdDev
@@ -199,12 +203,14 @@ for filename in filenames:
 
 		# find maxima corresponding to foci - noise=50 has worked well
 		# empirically
-		IJ.run("Find Maxima...", "noise=50 output=List");
+		IJ.run("Find Maxima...", "noise=750 output=List");
 		image.close()
 		
 		# get the results table with maxima and add a "cell" column to it
 		rt = ResultsTable.getResultsTable()
 		rt.addValue("cell", 0)
+		countcells = countcells + len(rois)
+		print("countcells: "+str(countcells))
 		cell = 1
 		for roi in rois:
 		# this is looping over cells...
@@ -218,6 +224,7 @@ for filename in filenames:
 				if roi.contains(x,y):
 					rt.setValue("cell", count, cell)
 			cell = cell + 1
+			
 		# save this results table
 		rt.save(directory+"/"+filename+"_GFP.csv" )
 		print("saving at ",directory+"/"+filename+"_GFP.csv")
@@ -233,15 +240,22 @@ for filename in filenames:
 		# loop over all cells, add cell number to the "cell" column
 		for count in range(cell):
 			consol.setValue("cell",count,count)
+			
 
 		# loop over all foci
 		for count in range(rt.size()):
 			# get in which cell that foci is and increase the
 			# counter on the summary results table
 			currcell = int(rt.getValue("cell",count))
+			
 			consol.setValue("foci_count", currcell, int(consol.getValue("foci_count", currcell))+1)
-				
-
+		for count in range(1,cell):
+			foci = consol.getValue("foci_count",count)	
+			if foci<=3:
+				cellsperfoci[foci] = cellsperfoci[foci] + 1
+			else:
+				cellsperfoci["more"] = cellsperfoci["more"] +1
+		print(cellsperfoci)
 		# close the results window
 		IJ.selectWindow("Results"); 
 		IJ.run("Close");
@@ -315,6 +329,7 @@ for filename in filenames:
 			# the same cell is in the relevant range, set "is_in_range" to 1
 			if (mindist > minimumdist) and (mindist < maximumdist):
 				consol.setValue("is_in_range", int(cell1), 1)
+				count_range = count_range + 1 
 			# in the mCherry results table, set minimum distance
 			# and the focus to which that minimum distance is
 			rt.setValue("dist_to", count, mindist)
@@ -327,11 +342,13 @@ for filename in filenames:
 		
 		# do the same foci counting procedure as for GFP
 		rowcount = 1
-		for count in range(cell):
-			consol.setValue("cell",count,count)
-		for count in range(rt.size()):
-			currcell = int(rt.getValue("cell",count))
-			consol.setValue("foci_count", currcell, int(consol.getValue("foci_count", currcell))+1)
+		#for count in range(cell):
+			#consol.setValue("cell",count,count)
+			#consol.setValue("foci_count",count,0)
+		#for count in range(rt.size()):
+			#currcell = int(rt.getValue("cell",count))
+			#print(currcell, "old value", consol.getValue("foci_count", currcell),  "new value", int(consol.getValue("foci_count", currcell))+1)
+			#consol.setValue("foci_count", currcell, int(consol.getValue("foci_count", currcell))+1)
 		IJ.selectWindow("Results"); 
 		IJ.run("Close");	
 	# save the summary results table
@@ -340,3 +357,11 @@ for filename in filenames:
 	# reset the ROI Manager, close it and go to next file (if there is one)	
 	rm.runCommand("Reset")
 	rm.close()
+fp = open(srcDir + "/total_summary.csv", "w")
+fp.write("total cells, "+str(countcells)+"\n")
+if (linechannel > 0):
+	fp.write("cells in range, "+str(count_range)+"\n")
+for i in range(4):
+	fp.write("cells with "+str(i)+" foci, "+str(cellsperfoci[i])+"\n")
+fp.write("cells with more than 3 foci, "+ str(cellsperfoci["more"])+"\n")
+fp.close()
