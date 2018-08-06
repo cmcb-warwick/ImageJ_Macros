@@ -21,7 +21,7 @@ from the rest of the stack.
 import os
 from java.io import File
 
-from ij import IJ, ImageStack, ImagePlus
+from ij import IJ, ImageStack, ImagePlus, CompositeImage
 from ij.plugin.frame import RoiManager
 import math
 from ij import WindowManager
@@ -159,9 +159,15 @@ for filename in filenames:
 	image = IJ.getImage()
 	z_slices = twochannel_stack.getSize() / 2
 	print("order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
-	IJ.run("Stack to Hyperstack...", "order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
+	#IJ.run("Stack to Hyperstack...", "order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
+	image.setDimensions(2, z_slices, 1)
+	image.setOpenAsHyperStack(True)
+	tst = CompositeImage(image)
+	print(image.isHyperStack(), image.getNChannels(), image.getOverlay())
+	tst.show()
+	#tst = CompositeImage(image)
 	
-	rt = run_comdet(image)
+	rt = run_comdet(tst)
 	image = IJ.getImage()
 	
 	rt.save(directory+"/"+filename+"_results.csv" )
@@ -196,7 +202,8 @@ for filename in filenames:
 		colocalised_dapi[i] = float(colocalised_dapi[i] /2)
 	print("dapi red: ",red_spots_dapi,"dapi green: ", green_spots_dapi, "dapi coloc: ", colocalised_dapi)
 	image.close()
-	
+	image = IJ.getImage()
+	image.close()
 	fp = open(directory+"/"+filename+"_summary.csv", "w")
 	fp.write("red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising, red spots on DAPI, green spots on DAPI, colocalised on DAPI, percentage of red spots colocalising on DAPI, percentage of green spots colocalising on DAPI\n")
 	for i in range(z_slices):
@@ -206,8 +213,8 @@ for filename in filenames:
 	fp.write("total red spots, "+str(sum(red_spots))+"\n")
 	fp.write("total green spots, "+str(sum(green_spots))+"\n")
 	fp.write("total colocalised, "+str(sum(colocalised))+"\n")
-	fp.write("percentage of red spots colocalising, "+str(sum(colocalised)/sum(red_spots))+"\n")
-	fp.write("percentage of green spots colocalising, "+str(sum(colocalised)/sum(green_spots))+"\n\n\n")
+	fp.write("percentage of red spots colocalising, "+str(safe_div(sum(colocalised),sum(red_spots)))+"\n")
+	fp.write("percentage of green spots colocalising, "+str(safe_div(sum(colocalised),sum(green_spots)))+"\n\n\n")
 
 	fp.write("total red spots on DAPI, "+str(sum(red_spots_dapi))+"\n")
 	fp.write("total green spots on DAPI, "+str(sum(green_spots_dapi))+"\n")
