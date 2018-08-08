@@ -40,6 +40,7 @@ from ij.process import ImageStatistics as IS
 countcells = 0
 count_range = 0
 cellsperfoci = {0:0, 1:0, 2:0, 3:0, "more":0}
+cellsperfoci_range = {0:0, 1:0, 2:0, 3:0, "more":0}
 
 # calculate total number of channels based on 
 # parameter inputs
@@ -329,7 +330,8 @@ for filename in filenames:
 			# the same cell is in the relevant range, set "is_in_range" to 1
 			if (mindist > minimumdist) and (mindist < maximumdist):
 				consol.setValue("is_in_range", int(cell1), 1)
-				count_range = count_range + 1 
+				
+				
 			# in the mCherry results table, set minimum distance
 			# and the focus to which that minimum distance is
 			rt.setValue("dist_to", count, mindist)
@@ -350,7 +352,18 @@ for filename in filenames:
 			#print(currcell, "old value", consol.getValue("foci_count", currcell),  "new value", int(consol.getValue("foci_count", currcell))+1)
 			#consol.setValue("foci_count", currcell, int(consol.getValue("foci_count", currcell))+1)
 		IJ.selectWindow("Results"); 
-		IJ.run("Close");	
+		IJ.run("Close");
+
+
+	for count in range(consol.size()):	
+		inrange = consol.getValue("is_in_range",count)
+		if (inrange == 1):
+			count_range = count_range + 1 	
+			foci = consol.getValue("foci_count",count)	
+			if foci<=3:
+				cellsperfoci_range[foci] = cellsperfoci_range[foci] + 1
+			else:
+				cellsperfoci_range["more"] = cellsperfoci_range["more"] +1
 	# save the summary results table
 	consol.save(directory+"/"+filename+"_summary.csv" )	
 	
@@ -364,4 +377,7 @@ if (linechannel > 0):
 for i in range(4):
 	fp.write("cells with "+str(i)+" foci, "+str(cellsperfoci[i])+"\n")
 fp.write("cells with more than 3 foci, "+ str(cellsperfoci["more"])+"\n")
+for i in range(4):
+	fp.write("cells with "+str(i)+" foci and in range, "+str(cellsperfoci_range[i])+"\n")
+fp.write("cells with more than 3 foci and in range, "+ str(cellsperfoci_range["more"])+"\n")
 fp.close()

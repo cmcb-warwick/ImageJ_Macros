@@ -5,6 +5,7 @@
 #@ Float (label = "Channel 2 approx size", value = 4.0) ch2size
 #@ Float (label = "Channel 2 threshold", value = 3.0) ch2thresh
 #@ Float (label = "Maximum colocalisation distance", value = 4.0) coloc
+#@ Boolean (label = "Use auto local threshold", value = False) auto_thresh
 
 """
 
