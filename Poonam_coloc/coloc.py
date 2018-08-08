@@ -30,6 +30,7 @@ from loci.plugins import BF
 from ij.io import FileSaver 
 from ij.process import ImageStatistics as IS  
 import time
+from ij.plugin import HyperStackConverter
 
 srcDir = srcFile.getAbsolutePath()
 
@@ -76,7 +77,7 @@ def retrieve_dapi(image, channel):
 	return final_stack
 
 def run_comdet(image):
-	IJ.run("Detect Particles", "include two=[Detect in both channels independently] ch1a="+str(ch1size) + " ch1s=" + str(ch1thresh) + " ch2a="+str(ch2size) + " ch2s=" + str(ch2thresh) + " calculate max=" + str(coloc) + " add=Nothing")
+	IJ.run(image,"Detect Particles", "include two=[Detect in both channels independently] ch1a="+str(ch1size) + " ch1s=" + str(ch1thresh) + " ch2a="+str(ch2size) + " ch2s=" + str(ch2thresh) + " calculate max=" + str(coloc) + " add=Nothing")
 	rt = ResultsTable.getResultsTable()
 	return rt
 
@@ -96,7 +97,7 @@ def get_red_spots(rt, slices, image):
 				dapi_spots[thisslice-1] += 1
 	return [spots, dapi_spots]
 
-def get_green_spots(rt, slices):
+def get_green_spots(rt, slices, image):
 	spots = [0]*slices
 	dapi_spots = [0]*slices
 	for count in range(rt.size()):
@@ -110,7 +111,7 @@ def get_green_spots(rt, slices):
 				dapi_spots[thisslice-1] += 1
 	return [spots, dapi_spots]
 
-def get_colocalised(rt, slices):
+def get_colocalised(rt, slices, image):
 	spots = [0]*slices
 	dapi_spots = [0]*slices
 	for count in range(rt.size()):
@@ -153,21 +154,20 @@ for filename in filenames:
 	#fs = FileSaver(image)
 	#filepath = directory + "/" + filename + "_twochannel.tif" 
 	#fs.saveAsTiff(filepath) 
-	image = ImagePlus("dapi stack", dapi_stack).show()
-	image = ImagePlus("two channel stack", twochannel_stack).show()
+	image_dapi = ImagePlus("dapi stack", dapi_stack)
+	image_dapi.show()
+	image = ImagePlus("two channel stack", twochannel_stack)
+	image.show()
 	
-	image = IJ.getImage()
+	#image = IJ.getImage()
 	z_slices = twochannel_stack.getSize() / 2
-	print("order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
-	#IJ.run("Stack to Hyperstack...", "order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
-	image.setDimensions(2, z_slices, 1)
-	image.setOpenAsHyperStack(True)
-	tst = CompositeImage(image)
-	print(image.isHyperStack(), image.getNChannels(), image.getOverlay())
-	tst.show()
-	#tst = CompositeImage(image)
 	
-	rt = run_comdet(tst)
+	print("order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
+	image_two = HyperStackConverter.toHyperStack(image,2,z_slices,1)
+	image = CompositeImage(image_two)
+	image.show()
+	
+	rt = run_comdet(image)
 	image = IJ.getImage()
 	
 	rt.save(directory+"/"+filename+"_results.csv" )
@@ -184,26 +184,25 @@ for filename in filenames:
 	image.close()
 
 	image = IJ.getImage()
-	IJ.run("Convert to Mask", "method=Default background=Default calculate")
+	IJ.run(image_dapi,"Convert to Mask", "method=Default background=Default calculate")
 
 	
 	
 	#image = IJ.getImage()
 	#image.close()
 	
-	[red_spots, red_spots_dapi] = get_red_spots(rt, z_slices, image)
+	[red_spots, red_spots_dapi] = get_red_spots(rt, z_slices, image_dapi)
 	
-	[green_spots, green_spots_dapi] = get_green_spots(rt, z_slices)
+	[green_spots, green_spots_dapi] = get_green_spots(rt, z_slices, image_dapi)
 	
-	[colocalised, colocalised_dapi] = get_colocalised(rt, z_slices)
+	[colocalised, colocalised_dapi] = get_colocalised(rt, z_slices, image_dapi)
 	for i in range(z_slices):
 		colocalised[i] = float(colocalised[i] /2)
 	for i in range(z_slices):
 		colocalised_dapi[i] = float(colocalised_dapi[i] /2)
 	print("dapi red: ",red_spots_dapi,"dapi green: ", green_spots_dapi, "dapi coloc: ", colocalised_dapi)
 	image.close()
-	image = IJ.getImage()
-	image.close()
+	
 	fp = open(directory+"/"+filename+"_summary.csv", "w")
 	fp.write("red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising, red spots on DAPI, green spots on DAPI, colocalised on DAPI, percentage of red spots colocalising on DAPI, percentage of green spots colocalising on DAPI\n")
 	for i in range(z_slices):
@@ -213,8 +212,8 @@ for filename in filenames:
 	fp.write("total red spots, "+str(sum(red_spots))+"\n")
 	fp.write("total green spots, "+str(sum(green_spots))+"\n")
 	fp.write("total colocalised, "+str(sum(colocalised))+"\n")
-	fp.write("percentage of red spots colocalising, "+str(safe_div(sum(colocalised),sum(red_spots)))+"\n")
-	fp.write("percentage of green spots colocalising, "+str(safe_div(sum(colocalised),sum(green_spots)))+"\n\n\n")
+	fp.write("percentage of red spots colocalising, "+str(sum(colocalised)/sum(red_spots))+"\n")
+	fp.write("percentage of green spots colocalising, "+str(sum(colocalised)/sum(green_spots))+"\n\n\n")
 
 	fp.write("total red spots on DAPI, "+str(sum(red_spots_dapi))+"\n")
 	fp.write("total green spots on DAPI, "+str(sum(green_spots_dapi))+"\n")
@@ -230,6 +229,7 @@ for filename in filenames:
 	fp.write(","+str(red_spots_dapi[-1])+","+str(green_spots_dapi[-1])+","+str(colocalised_dapi[-1])+","+str(safe_div(colocalised_dapi[-1],red_spots_dapi[-1]))+","+str(safe_div(colocalised_dapi[-1],green_spots_dapi[-1]))+"\n")
 	fp.close()
 	rt.reset()
+	image_dapi.close()
 	w = WindowManager 
 
 	win = w.getWindow("Summary") 
