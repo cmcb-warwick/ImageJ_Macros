@@ -6,6 +6,9 @@
 #@ Integer (label = "Magnification", value = 40) magnification
 #@ Float (label = "Minimum distance (um)", value = 1) minimumdist
 #@ Float (label = "Maximum distance (um)", value = 2.5) maximumdist
+#@ Integer (label = "Minimum cell size", value = 200) min_size
+#@ Integer (label = "Maximum cell size", value = 999999999) max_size
+
 
 """
 
@@ -167,8 +170,7 @@ for filename in filenames:
 
 	# we establish a minimum size of 200 for something to be considered
 	# a cell, add cells to ROI and create an outline image
-	IJ.run("Analyze Particles...", "size=200-Infinity show=Outlines clear add");
-
+	IJ.run("Analyze Particles...", "size="+str(min_size)+"-"+str(max_size)+" show=Outlines clear add");    
 	# getting and saving outline image as a tif
 	image = IJ.getImage()
 	fs = FileSaver(image)
@@ -354,16 +356,16 @@ for filename in filenames:
 		IJ.selectWindow("Results"); 
 		IJ.run("Close");
 
-
-	for count in range(consol.size()):	
-		inrange = consol.getValue("is_in_range",count)
-		if (inrange == 1):
-			count_range = count_range + 1 	
-			foci = consol.getValue("foci_count",count)	
-			if foci<=3:
-				cellsperfoci_range[foci] = cellsperfoci_range[foci] + 1
-			else:
-				cellsperfoci_range["more"] = cellsperfoci_range["more"] +1
+	
+		for count in range(consol.size()):	
+			inrange = consol.getValue("is_in_range",count)
+			if (inrange == 1):
+				count_range = count_range + 1 	
+				foci = consol.getValue("foci_count",count)	
+				if foci<=3:
+					cellsperfoci_range[foci] = cellsperfoci_range[foci] + 1
+				else:
+					cellsperfoci_range["more"] = cellsperfoci_range["more"] +1
 	# save the summary results table
 	consol.save(directory+"/"+filename+"_summary.csv" )	
 	
@@ -371,13 +373,23 @@ for filename in filenames:
 	rm.runCommand("Reset")
 	rm.close()
 fp = open(srcDir + "/total_summary.csv", "w")
-fp.write("total cells, "+str(countcells)+"\n")
+fp.write("total cells, "+str(countcells)+"\n\n")
 if (linechannel > 0):
 	fp.write("cells in range, "+str(count_range)+"\n")
+	fp.write("cells with foci and in range, "+str(cellsperfoci_range[1]+cellsperfoci_range[2]+cellsperfoci_range[3])+"\n\n")
+	for i in range(4):
+		fp.write("cells with "+str(i)+" foci and in range, "+str(cellsperfoci_range[i])+"\n")
+	fp.write("cells with more than 3 foci and in range, "+ str(cellsperfoci_range["more"])+"\n\n")
+	for i in range(4):
+	
+		fp.write("percentage of in range cells with "+str(i)+" foci, "+str(float(cellsperfoci_range[i])/count_range)+"\n")
+	fp.write("percentage of in range cells with more than 3 foci, "+str(float(cellsperfoci_range["more"])/count_range)+"\n\n")
 for i in range(4):
 	fp.write("cells with "+str(i)+" foci, "+str(cellsperfoci[i])+"\n")
-fp.write("cells with more than 3 foci, "+ str(cellsperfoci["more"])+"\n")
+fp.write("cells with more than 3 foci, "+ str(cellsperfoci["more"])+"\n\n")
 for i in range(4):
-	fp.write("cells with "+str(i)+" foci and in range, "+str(cellsperfoci_range[i])+"\n")
-fp.write("cells with more than 3 foci and in range, "+ str(cellsperfoci_range["more"])+"\n")
+	
+	fp.write("percentage of cells with "+str(i)+" foci, "+str(float(cellsperfoci[i])/countcells)+"\n")
+fp.write("percentage of cells with more than 3 foci, "+str(float(cellsperfoci["more"])/countcells)+"\n\n")
+
 fp.close()

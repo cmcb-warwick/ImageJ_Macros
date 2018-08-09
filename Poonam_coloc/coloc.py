@@ -32,6 +32,7 @@ from ij.io import FileSaver
 from ij.process import ImageStatistics as IS  
 import time
 from ij.plugin import HyperStackConverter
+from ij.process import ImageConverter
 
 srcDir = srcFile.getAbsolutePath()
 
@@ -78,7 +79,7 @@ def retrieve_dapi(image, channel):
 	return final_stack
 
 def run_comdet(image):
-	IJ.run(image,"Detect Particles", "include two=[Detect in both channels independently] ch1a="+str(ch1size) + " ch1s=" + str(ch1thresh) + " ch2a="+str(ch2size) + " ch2s=" + str(ch2thresh) + " calculate max=" + str(coloc) + " add=Nothing")
+	IJ.run(image,"Detect Particles", " two=[Detect in both channels independently] ch1a="+str(ch1size) + " ch1s=" + str(ch1thresh) + " ch2a="+str(ch2size) + " ch2s=" + str(ch2thresh) + " calculate max=" + str(coloc) + " add=Nothing")
 	rt = ResultsTable.getResultsTable()
 	return rt
 
@@ -159,11 +160,15 @@ for filename in filenames:
 	image_dapi.show()
 	image = ImagePlus("two channel stack", twochannel_stack)
 	image.show()
-	
+	if auto_thresh:
+		con = ImageConverter(image)
+		con.convertToGray8()
+		IJ.run(image, "Auto Local Threshold", "method=Bernsen radius=15 parameter_1=0 parameter_2=0 white stack")
+		#image = CompositeImage(image_two)
 	#image = IJ.getImage()
-	z_slices = twochannel_stack.getSize() / 2
+	z_slices = image.getDimensions()[3] / 2
 	
-	print("order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color")
+	print("order=xyczt(default) channels=2 slices="+ str(z_slices) + " frames=1 display=Color", image.getDimensions())
 	image_two = HyperStackConverter.toHyperStack(image,2,z_slices,1)
 	image = CompositeImage(image_two)
 	image.show()
