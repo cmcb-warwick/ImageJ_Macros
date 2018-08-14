@@ -192,15 +192,20 @@ while counter < len(imageIds):
     #	imageId = imageIds[2]
     imageId = imageIds[counter]
     imageName = imageNames[counter]
-    if imageName not in done:
-    	print imageId, imageName
+    print imageId, imageName
+    if imageName != imageNames[counter+1]:
+    	#print("this is a new image")
+    	#print(done)
     
     	openImagePlus(HOST,USERNAME,PASSWORD,groupId,imageId)
+    	#print("opened image")
         #IJ.run("Enhance Contrast", "saturated=0.35");
         #Plug Your analysis here#
     	imp = IJ.getImage();    
     	IJ.runMacroFile(str(macroFilePath))
+    	#print("ran macro")
     	imp.close()   
+    	#print("closed image")
     	done.append(imageName) 
     counter += 1
         #	Save resultant image using Bio-Formats
