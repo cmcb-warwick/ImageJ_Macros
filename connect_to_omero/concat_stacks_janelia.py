@@ -69,27 +69,38 @@ def omeroConnect():
     cred.getServer().setPort(PORT)
     cred.getUser().setUsername(USERNAME.strip())
     cred.getUser().setPassword(PASSWORD.strip())
+    
     simpleLogger = SimpleLogger()
     gateway = Gateway(simpleLogger)
     gateway.connect(cred)
     return gateway
 
-# List all ImageId's under a Project/Dataset
-def getImageIds(gateway, datasetId):
+# List all ImageIds and ImageNames under a Project/Dataset
+def getImageIdNames(gateway, datasetId):
     
     browse = gateway.getFacility(BrowseFacility)
     user = gateway.getLoggedInUser()
-    ctx = SecurityContext(user.getGroupId())
+    print(user)
+    defaultgroup = user.getGroupId()
+    
+    ctx = SecurityContext(groupId)
+    print(ctx)
     ids = ArrayList(1)
     val = Long(datasetId)
     ids.add(val)
     images = browse.getImagesForDatasets(ctx, ids)
     j = images.iterator()
     imageIds = []
+    imageNames = []
     while j.hasNext():
         image = j.next()
         imageIds.append(String.valueOf(image.getId()))
-    return imageIds
+        imageNames.append(String.valueOf(image.getName()))
+    
+    return imageIds, imageNames, defaultgroup
+
+
+
 
 
 def uploadImage(path, gateway):
@@ -164,21 +175,31 @@ PASSWORD = myvars['password']
 
 # Prototype analysis example
 gateway = omeroConnect()
-imageIds = getImageIds(gateway,datasetId);
-imageIds.sort()
+imageIds,imageNames,defaultgroup = getImageIdNames(gateway, datasetId)
+nameIds = zip(imageNames, imageIds)
+nameIds.sort()
+ids_sorted = [x for y, x in nameIds]
+imageIds = ids_sorted
 openImagePlus(HOST,USERNAME,PASSWORD,groupId,imageIds[0])
 image = IJ.getImage();  
 z_slices = image.getNFrames()
 counter = 1
-for imageId in imageIds[1:]:
+done = [imageNames[0]]
+while counter < len(imageIds):
+#for imageId, imageName in imageIds[1:], imageNames[1:]:
     #	imageId = imageIds[2]
-    print imageId
-    openImagePlus(HOST,USERNAME,PASSWORD,groupId,imageId)
+    imageId = imageIds[counter]
+    imageName = imageNames[counter]
+    if imageName not in done:
+    	print imageId, imageName
+    
+    	openImagePlus(HOST,USERNAME,PASSWORD,groupId,imageId)
         #IJ.run("Enhance Contrast", "saturated=0.35");
         #Plug Your analysis here#
-    imp = IJ.getImage();    
-    IJ.runMacroFile(str(macroFilePath))
-    imp.close()    
+    	imp = IJ.getImage();    
+    	IJ.runMacroFile(str(macroFilePath))
+    	imp.close()   
+    	done.append(imageName) 
     counter += 1
         #	Save resultant image using Bio-Formats
         #
@@ -202,5 +223,6 @@ IJ.run(final_image, "Stack to Hyperstack...", "order=xyczt(default) channels=1 s
 print(final_image.isHyperStack(), final_image.getDimensions(), final_image.isDisplayedHyperStack())
 #image.close()
 print("Done")
+openImagePlus(HOST,USERNAME,PASSWORD,defaultgroup,str(100000000))
 #success = uploadImage(str2d, gateway)
 gateway.disconnect()	
