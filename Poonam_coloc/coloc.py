@@ -6,13 +6,15 @@
 #@ Float (label = "Channel 2 threshold", value = 3.0) ch2thresh
 #@ Float (label = "Maximum colocalisation distance", value = 4.0) coloc
 #@ Boolean (label = "Use auto local threshold", value = False) auto_thresh
+#@ Boolean (label = "Automatically segment cell of interest", value = True) auto_cell
+#@ Float (label = "Threshold for automatic cell segmentation", value = 200.0) auto_cell_thresh
 
 """
 
 coloc.py 
 created by: Erick Martins Ratamero
 date: 01/08/18
-last updated: 02/08/18
+last updated: 17/08/18
 
 Opens a directory of images and calculates green on red and 
 red on green colocalisation. Separates bottom of nucleus calculations
@@ -31,8 +33,8 @@ from loci.plugins import BF
 from ij.io import FileSaver 
 from ij.process import ImageStatistics as IS  
 import time
-from ij.plugin import HyperStackConverter
-from ij.process import ImageConverter
+from ij.plugin import HyperStackConverter, ImageCalculator
+from ij.process import ImageConverter, ImageProcessor
 
 srcDir = srcFile.getAbsolutePath()
 
@@ -61,6 +63,19 @@ def retrieve_channels(image, channels):
 			final_stack.addSlice(str(i), myslice)
 	return final_stack
 
+
+def generate_mask(image, auto_cell_thresh):
+	w = WindowManager
+	image.getProcessor().setThreshold(auto_cell_thresh, 999999, ImageProcessor.NO_LUT_UPDATE)
+	IJ.run(image, "Convert to Mask", "method=Default background=Default")
+	IJ.run(image, "Fill Holes", "stack")
+	IJ.run(image,"Dilate", "stack")
+	IJ.run(image, "Fill Holes", "stack")
+	IJ.run(image,"Analyze Particles...", "size=1000-Infinity show=Masks clear add stack");
+	
+	return image
+
+
 def retrieve_dapi(image, channel):
 	# get stack from current image
 	stack = image.getStack()
@@ -84,24 +99,48 @@ def run_comdet(image):
 	return rt
 
 
+def remove_outside_cell(rest, mask):
+	mask_stack = mask.getStack()
+	#print(rest.getColumnHeadings())
+	count = 0
+	while count < rest.size():
+		thisslice = int(rest.getValue("Slice",count))
+		X = int(rest.getValue("X_(px)", count))
+		Y = int(rest.getValue("Y_(px)", count))
+		#print(count, rest.getRowAsString(count), mask_stack.getVoxel(X,Y,thisslice-1))
+		
+		if mask_stack.getVoxel(X,Y,thisslice-1) == 0:
+			rest.deleteRow(count)
+			count = count - 1
+		count = count +1	
+
+
+			
 def get_red_spots(rt, slices, image):
 	
 	spots = [0]*slices
 	dapi_spots = [0]*slices
+	stack = image.getStack()
+	
+	#print(stack.getSize())
 	for count in range(rt.size()):
+	
 		channel = int(rt.getValue("Channel",count))
 		thisslice = int(rt.getValue("Slice",count))
 		X = int(rt.getValue("X_(px)", count))
 		Y = int(rt.getValue("Y_(px)", count))
+		
 		if (channel == 1):
 			spots[thisslice-1] += 1
-			if(image.getPixel(X, Y)[0] == 255):
+			#print(stack.getVoxel(X,Y,thisslice-1), image.getPixel(X, Y)[0])
+			if(stack.getVoxel(X,Y,thisslice-1) == 255.0):
 				dapi_spots[thisslice-1] += 1
 	return [spots, dapi_spots]
 
 def get_green_spots(rt, slices, image):
 	spots = [0]*slices
 	dapi_spots = [0]*slices
+	stack = image.getStack()
 	for count in range(rt.size()):
 		channel = int(rt.getValue("Channel",count))
 		thisslice = int(rt.getValue("Slice",count))
@@ -109,7 +148,7 @@ def get_green_spots(rt, slices, image):
 		Y = int(rt.getValue("Y_(px)", count))
 		if (channel == 2):
 			spots[thisslice-1] += 1
-			if(image.getPixel(X, Y)[0] == 255):
+			if(stack.getVoxel(X,Y,thisslice-1) == 255.0):
 				dapi_spots[thisslice-1] += 1
 	return [spots, dapi_spots]
 
@@ -148,8 +187,10 @@ for filename in filenames:
 	directory = srcDir
 	channels = [1, 2]
 	channel = 3
+	greenchannel = [2]
 	channel = channel % totchannels
 	twochannel_stack = retrieve_channels(image, channels)
+	green_stack = retrieve_channels(image, greenchannel)
 	dapi_stack = retrieve_dapi(image, channel)
 	image.close()
 	#image = ImagePlus("test", twochannel_stack)
@@ -158,8 +199,13 @@ for filename in filenames:
 	#fs.saveAsTiff(filepath) 
 	image_dapi = ImagePlus("dapi stack", dapi_stack)
 	image_dapi.show()
+	image_green = ImagePlus("green stack", green_stack)
+	image_green.show()
 	image = ImagePlus("two channel stack", twochannel_stack)
 	image.show()
+	
+
+	
 	if auto_thresh:
 		con = ImageConverter(image)
 		con.convertToGray8()
@@ -174,9 +220,29 @@ for filename in filenames:
 	image.show()
 	
 	rt = run_comdet(image)
-	image = IJ.getImage()
-	
 	rt.save(directory+"/"+filename+"_results.csv" )
+	
+	image = IJ.getImage()
+	if auto_cell:
+		
+		mask = generate_mask(image_green, auto_cell_thresh)
+		fs = FileSaver(mask)
+		filepath = directory + "/" + filename + "_mask.tiff" 
+		
+		fs.saveAsTiff(filepath) 
+		rest = ResultsTable.open(directory+"/"+filename+"_results.csv")
+		
+		#print(rest.getColumnHeadings())
+		remove_outside_cell(rest,mask)
+		rest.save(directory+"/"+filename+"_results.csv" )
+	else:
+		rest = rt
+
+	
+	
+	
+	
+	
 	
 	image.setDimensions(2, z_slices, 1)
 	image.setOpenAsHyperStack(True)
@@ -190,27 +256,31 @@ for filename in filenames:
 	image.close()
 
 	image = IJ.getImage()
-	IJ.run(image_dapi,"Convert to Mask", "method=Default background=Default calculate")
-
+	IJ.run(image_dapi,"Convert to Mask", "method=Otsu background=Default calculate")
+	fs = FileSaver(image_dapi)
+	filepath = directory + "/" + filename + "_dapi.tiff" 
+	
+	fs.saveAsTiff(filepath) 
 	
 	
 	#image = IJ.getImage()
 	#image.close()
 	
-	[red_spots, red_spots_dapi] = get_red_spots(rt, z_slices, image_dapi)
+	[red_spots, red_spots_dapi] = get_red_spots(rest, z_slices, image_dapi)
 	
-	[green_spots, green_spots_dapi] = get_green_spots(rt, z_slices, image_dapi)
+	[green_spots, green_spots_dapi] = get_green_spots(rest, z_slices, image_dapi)
 	
-	[colocalised, colocalised_dapi] = get_colocalised(rt, z_slices, image_dapi)
+	[colocalised, colocalised_dapi] = get_colocalised(rest, z_slices, image_dapi)
 	for i in range(z_slices):
 		colocalised[i] = float(colocalised[i] /2)
 	for i in range(z_slices):
 		colocalised_dapi[i] = float(colocalised_dapi[i] /2)
 	print("dapi red: ",red_spots_dapi,"dapi green: ", green_spots_dapi, "dapi coloc: ", colocalised_dapi)
 	image.close()
-	
+	image_green.changes = False
+	image_green.close()
 	fp = open(directory+"/"+filename+"_summary.csv", "w")
-	fp.write("red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising, red spots on DAPI, green spots on DAPI, colocalised on DAPI, percentage of red spots colocalising on DAPI, percentage of green spots colocalising on DAPI\n")
+	fp.write("slice, red spots, green spots, colocalised, percentage of red spots colocalising, percentage of green spots colocalising, red spots on DAPI, green spots on DAPI, colocalised on DAPI, percentage of red spots colocalising on DAPI, percentage of green spots colocalising on DAPI\n")
 	for i in range(z_slices):
 		fp.write(str(i)+","+str(red_spots[i])+","+str(green_spots[i])+","+str(colocalised[i])+","+str(safe_div(colocalised[i],red_spots[i]))+","+str(safe_div(colocalised[i],green_spots[i])))
 		fp.write(","+str(red_spots_dapi[i])+","+str(green_spots_dapi[i])+","+str(colocalised_dapi[i])+","+str(safe_div(colocalised_dapi[i],red_spots_dapi[i]))+","+str(safe_div(colocalised_dapi[i],green_spots_dapi[i]))+"\n")
@@ -218,8 +288,8 @@ for filename in filenames:
 	fp.write("total red spots, "+str(sum(red_spots))+"\n")
 	fp.write("total green spots, "+str(sum(green_spots))+"\n")
 	fp.write("total colocalised, "+str(sum(colocalised))+"\n")
-	fp.write("percentage of red spots colocalising, "+str(sum(colocalised)/sum(red_spots))+"\n")
-	fp.write("percentage of green spots colocalising, "+str(sum(colocalised)/sum(green_spots))+"\n\n\n")
+	fp.write("percentage of red spots colocalising, "+str(safe_div(sum(colocalised),sum(red_spots)))+"\n")
+	fp.write("percentage of green spots colocalising, "+str(safe_div(sum(colocalised),sum(green_spots)))+"\n\n\n")
 
 	fp.write("total red spots on DAPI, "+str(sum(red_spots_dapi))+"\n")
 	fp.write("total green spots on DAPI, "+str(sum(green_spots_dapi))+"\n")
@@ -240,7 +310,13 @@ for filename in filenames:
 
 	win = w.getWindow("Summary") 
 	win.close() 
-	win = w.getWindow("Results") 
-	win.close() 
+	if not auto_cell:
+		win = w.getWindow("Results") 
+		win.close() 
+	win = w.getWindow("two channel stack") 
+	while win != None:
+		print(win)
+		win.close()
+		win = w.getWindow("two channel stack") 
 	#rt.close()
 	

@@ -42,6 +42,7 @@ from loci.formats.in import DefaultMetadataOptions
 from loci.formats.in import MetadataLevel
 from ij import IJ
 from ij.plugin import HyperStackConverter
+from ij import WindowManager
 
 def openImagePlus(HOST,USERNAME,PASSWORD,groupId,imageId):
     
@@ -187,6 +188,7 @@ image = IJ.getImage();
 z_slices = image.getNFrames()
 counter = 1
 done = [imageNames[0]]
+w = WindowManager
 while counter < len(imageIds):
 #for imageId, imageName in imageIds[1:], imageNames[1:]:
     #	imageId = imageIds[2]
@@ -201,7 +203,8 @@ while counter < len(imageIds):
     	#print("opened image")
         #IJ.run("Enhance Contrast", "saturated=0.35");
         #Plug Your analysis here#
-    	imp = IJ.getImage();    
+         
+    	imp = w.getImage(imageName);    
     	IJ.runMacroFile(str(macroFilePath))
     	#print("ran macro")
     	imp.close()   
