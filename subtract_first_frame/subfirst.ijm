@@ -1,0 +1,12 @@
+stack = getTitle();
+run("Duplicate...", " ");
+firstFrame = getTitle();
+imageCalculator("Subtract create 32-bit stack", stack,firstFrame);
+newMovie = getTitle();
+selectWindow(stack);
+close();
+selectWindow(firstFrame);
+close();
+selectWindow(newMovie);
+run("Delete Slice");
+rename("final result");
